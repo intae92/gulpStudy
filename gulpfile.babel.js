@@ -1,21 +1,97 @@
 import gulp from 'gulp';
 import gpug from 'gulp-pug';
+// gulp-pug 플러그인은 pug를 html으로 컴파일 해줌
 import del from 'del';
+import ws from 'gulp-webserver';
+import image from 'gulp-image';
+import sass from 'gulp-sass';
+import autoprefixer from 'gulp-autoprefixer';
+import miniCSS from 'gulp-csso';
+import bro from 'gulp-bro';
+import babelify from 'babelify';
+import ghPages from 'gulp-gh-pages';
+
+/*
+scss파일에 _reset.scss _variables.scss 파일의 _는 
+sass한테 _파일은 컴파일 하지 말고 사용하라는 뜻(컴파일 후 해당 파일명 css 파일 생성안됨)
+gulp-autoprefixer 구형 브라우저가 최신 코드 호환
+gulp-csso css파일의 최소화
+
+Browserify는 개발자들이 브라우저에서 Node.js스타일의 모듈을 사용하기 위한 오픈소스js 툴
+최신 문법을 브라우저가 알려면 Browserify모듈을 설치 한후 그 안에 babel을 실행
+
+깃헙 배포 gulp-gh-pages
+*/
+sass.compiler = require('node-sass');
 
 const routes = {
   pug: {
+    watch: 'src/**/*.pug',
     src: 'src/*.pug',
     dest: 'build',
+  },
+  img: {
+    src: 'src/img/*',
+    dest: 'build/img',
+  },
+  scss: {
+    watch: 'src/scss/**/*.scss',
+    src: 'src/scss/style.scss',
+    dest: 'build/css',
+  },
+  js: {
+    watch: 'src/js/**/*.js',
+    src: 'src/js/main.js',
+    dest: 'build/js',
   },
 };
 
 const pug = () =>
   gulp.src(routes.pug.src).pipe(gpug()).pipe(gulp.dest(routes.pug.dest));
 
-const clean = () => del(['build']);
+const clean = () => del(['build/', '.publish']);
 
-const prepare = gulp.series([clean]);
+const webserver = () =>
+  gulp.src('build').pipe(ws({ livereload: true, open: true }));
 
-const assets = gulp.series([pug]);
+const img = () =>
+  gulp.src(routes.img.src).pipe(image()).pipe(gulp.dest(routes.img.dest));
 
-export const dev = gulp.series([prepare, assets]);
+const styles = () =>
+  gulp
+    .src(routes.scss.src)
+    .pipe(sass().on('error', sass.logError))
+    .pipe(autoprefixer())
+    .pipe(miniCSS())
+    .pipe(gulp.dest(routes.scss.dest));
+
+const js = () =>
+  gulp
+    .src(routes.js.src)
+    .pipe(
+      bro({
+        transform: [
+          babelify.configure({ presets: ['@babel/preset-env'] }),
+          ['uglifyify', { global: true }],
+        ],
+      })
+    )
+    .pipe(gulp.dest(routes.js.dest));
+
+const gh = () => gulp.src('build/**/*').pipe(ghPages());
+
+const watch = () => {
+  gulp.watch(routes.pug.watch, pug);
+  gulp.watch(routes.img.src, img);
+  gulp.watch(routes.scss.watch, styles);
+  gulp.watch(routes.js.watch, js);
+};
+const prepare = gulp.series([clean, img]);
+
+const assets = gulp.series([pug, styles, js]);
+
+const live = gulp.parallel([webserver, watch]);
+
+export const build = gulp.series([prepare, assets]);
+export const dev = gulp.series([build, live]);
+export const deploy = gulp.series([build, gh, clean]);
